@@ -38,19 +38,24 @@ class FlutterRingtonePlayer {
       String? fromAsset,
       double? volume,
       bool? looping,
-      bool? asAlarm}) async {
-    if (fromAsset == null && android == null && ios == null) {
+      bool? asAlarm,
+      String? uri}) async {
+    if (fromAsset == null && android == null && ios == null && uri == null) {
       throw "Please specify the sound source.";
     }
-    if (fromAsset == null) {
-      if (android == null) {
-        throw "Please specify android sound.";
-      }
-      if (ios == null) {
-        throw "Please specify ios sound.";
+    if (uri == null) {
+      if (fromAsset == null) {
+        if (android == null) {
+          throw "Please specify android sound.";
+        }
+        if (ios == null) {
+          throw "Please specify ios sound.";
+        }
+      } else {
+        fromAsset = await _generateAssetUri(fromAsset);
       }
     } else {
-      fromAsset = await _generateAssetUri(fromAsset);
+      fromAsset = uri;
     }
     try {
       var args = <String, dynamic>{};
