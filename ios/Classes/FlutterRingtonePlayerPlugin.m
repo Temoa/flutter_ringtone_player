@@ -4,6 +4,7 @@
 
 @implementation FlutterRingtonePlayerPlugin
 NSObject <FlutterPluginRegistrar> *pluginRegistrar = nil;
+SystemSoundID mSoundId = nil;
 
 + (void)registerWithRegistrar:(NSObject <FlutterPluginRegistrar> *)registrar {
     pluginRegistrar = registrar;
@@ -36,8 +37,14 @@ NSObject <FlutterPluginRegistrar> *pluginRegistrar = nil;
             CFRelease(soundFileURLRef);
         }
 
+        mSoundId = soundId;
+
         result(nil);
     } else if ([@"stop" isEqualToString:call.method]) {
+        if(mSoundId != nil) {
+            AudioServicesDisposeSystemSoundID(mSoundId);
+            mSoundId = nil;
+        }
         result(nil);
     } else {
         result(FlutterMethodNotImplemented);
