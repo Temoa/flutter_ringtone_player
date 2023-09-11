@@ -44,6 +44,9 @@ public class FlutterRingtonePlayerPlugin implements MethodCallHandler, FlutterPl
 
     @Override
     public void onDetachedFromEngine(@NonNull FlutterPluginBinding binding) {
+        if (ringtone != null && ringtone.isPlaying()) {
+            ringtone.stop();
+        }
         context = null;
         methodChannel.setMethodCallHandler(null);
         methodChannel = null;
