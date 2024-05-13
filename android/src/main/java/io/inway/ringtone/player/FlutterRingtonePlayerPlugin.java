@@ -2,12 +2,13 @@ package io.inway.ringtone.player;
 
 
 import android.content.Context;
+import android.media.AudioAttributes;
+import android.media.AudioFocusRequest;
 import android.media.AudioManager;
 import android.media.Ringtone;
 import android.media.RingtoneManager;
 import android.net.Uri;
 import android.os.Build;
-
 
 import androidx.annotation.NonNull;
 
@@ -17,16 +18,16 @@ import io.flutter.plugin.common.MethodCall;
 import io.flutter.plugin.common.MethodChannel;
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler;
 import io.flutter.plugin.common.MethodChannel.Result;
-import io.flutter.plugin.common.PluginRegistry.Registrar;
 
 /**
  * FlutterRingtonePlayerPlugin
  */
-public class FlutterRingtonePlayerPlugin implements MethodCallHandler, FlutterPlugin {
+public class FlutterRingtonePlayerPlugin implements MethodCallHandler, FlutterPlugin, AudioManager.OnAudioFocusChangeListener {
     private Context context;
     private MethodChannel methodChannel;
-    private RingtoneManager ringtoneManager;
     private Ringtone ringtone;
+    private AudioManager audioManager;
+    private AudioFocusRequest audioFocusRequest;
 
     @Override
     public void onAttachedToEngine(@NonNull FlutterPluginBinding binding) {
@@ -35,8 +36,9 @@ public class FlutterRingtonePlayerPlugin implements MethodCallHandler, FlutterPl
 
     private void onAttachedToEngine(Context applicationContext, BinaryMessenger messenger) {
         this.context = applicationContext;
-        this.ringtoneManager = new RingtoneManager(context);
-        this.ringtoneManager.setStopPreviousRingtone(true);
+        RingtoneManager ringtoneManager = new RingtoneManager(context);
+        ringtoneManager.setStopPreviousRingtone(true);
+        this.audioManager = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
 
         methodChannel = new MethodChannel(messenger, "flutter_ringtone_player");
         methodChannel.setMethodCallHandler(this);
@@ -69,13 +71,13 @@ public class FlutterRingtonePlayerPlugin implements MethodCallHandler, FlutterPl
                     int pref = call.argument("android");
                     switch (pref) {
                         case 1:
-                            ringtoneUri = ringtoneManager.getActualDefaultRingtoneUri(context, RingtoneManager.TYPE_ALARM);
+                            ringtoneUri = RingtoneManager.getActualDefaultRingtoneUri(context, RingtoneManager.TYPE_ALARM);
                             break;
                         case 2:
-                            ringtoneUri = ringtoneManager.getActualDefaultRingtoneUri(context, RingtoneManager.TYPE_NOTIFICATION);
+                            ringtoneUri = RingtoneManager.getActualDefaultRingtoneUri(context, RingtoneManager.TYPE_NOTIFICATION);
                             break;
                         case 3:
-                            ringtoneUri = ringtoneManager.getActualDefaultRingtoneUri(context, RingtoneManager.TYPE_RINGTONE);
+                            ringtoneUri = RingtoneManager.getActualDefaultRingtoneUri(context, RingtoneManager.TYPE_RINGTONE);
                             break;
                         default:
                             result.notImplemented();
@@ -83,18 +85,25 @@ public class FlutterRingtonePlayerPlugin implements MethodCallHandler, FlutterPl
 
                 }
             } else if (call.method.equals("stop")) {
-                if (ringtone != null) {
-                    ringtone.stop();
-                }
-
+                stop();
                 result.success(null);
             }
 
             if (ringtoneUri != null) {
-                if (ringtone != null) {
-                    ringtone.stop();
-                }
+                stop();
+
                 ringtone = RingtoneManager.getRingtone(context, ringtoneUri);
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    ringtone.setAudioAttributes(
+                            new AudioAttributes.Builder()
+                                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                                    .build()
+                    );
+                } else {
+                    ringtone.setStreamType(AudioManager.STREAM_MUSIC);
+                }
+
 
                 if (call.hasArgument("volume")) {
                     final double volume = call.argument("volume");
@@ -124,13 +133,55 @@ public class FlutterRingtonePlayerPlugin implements MethodCallHandler, FlutterPl
                     }
                 }
 
+                requestAudioFocus();
                 ringtone.play();
 
                 result.success(null);
             }
         } catch (Exception e) {
+            //noinspection CallToPrintStackTrace
             e.printStackTrace();
             result.error("Exception", e.getMessage(), null);
         }
+    }
+
+    private void stop() {
+        if (ringtone != null) {
+            ringtone.stop();
+        }
+        abandonAudioFocus();
+    }
+
+    private void requestAudioFocus() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            AudioAttributes attributes = new AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                    .build();
+            audioFocusRequest = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+                    .setWillPauseWhenDucked(true)
+                    .setAcceptsDelayedFocusGain(true)
+                    .setAudioAttributes(attributes)
+                    .setOnAudioFocusChangeListener(this)
+                    .build();
+            audioManager.requestAudioFocus(audioFocusRequest);
+        } else {
+            audioManager.requestAudioFocus(this, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN_TRANSIENT);
+        }
+    }
+
+    private void abandonAudioFocus() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            if (audioFocusRequest != null) {
+                audioManager.abandonAudioFocusRequest(audioFocusRequest);
+            }
+        } else {
+            audioManager.abandonAudioFocus(this);
+        }
+    }
+
+    @Override
+    public void onAudioFocusChange(int focusChange) {
+        //
     }
 }
